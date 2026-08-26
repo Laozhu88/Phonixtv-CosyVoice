@@ -676,6 +676,7 @@ function renderFromStatus(status) {
     state.dialectGuidance = status.capabilities.dialect_guidance || {};
     state.translation = status.translation || {};
     $("bundleChip").textContent = status.bundle.available ? "Rainfall 已连接" : "Rainfall 未连接";
+    $("llmVariantSelect").value = status.runtime?.configured_llm_variant || "rl";
     renderSelect($("language"), status.capabilities.languages, "zh");
     renderDialectSelect(status.capabilities.dialects, "mandarin");
     renderChannelTemplateSelect("");
@@ -757,6 +758,8 @@ function buildResultSummary(result) {
     `主段数量：${result.segments_count || 1}`,
     result.warning ? `提示：${result.warning}` : "",
     result.zip_filename ? `分段压缩包：${result.zip_filename}` : "",
+    result.broadcast_filename ? `广播母版：${result.broadcast_spec || "48kHz / 24-bit PCM"}` : "",
+    result.broadcast_warning ? `母版提示：${result.broadcast_warning}` : "",
   ].filter(Boolean).join("\n");
 }
 
@@ -1365,11 +1368,22 @@ function renderGeneratedSegments(result) {
 function renderResult(result) {
   state.currentResult = normalizeResult(result);
   result = state.currentResult;
+  if (result.quality_check) {
+    renderQualityCheck(result.quality_check);
+  } else {
+    $("qualityCheckBox").classList.add("hidden");
+  }
   $("resultState").textContent = `已生成 ${result.segments_count || 1} 段`;
   loadResultWave(result.audio_url);
   $("resultSummary").textContent = buildResultSummary(result);
   $("downloadLink").href = result.audio_url;
   $("downloadLink").classList.remove("hidden");
+  if (result.broadcast_audio_url) {
+    $("downloadBroadcastLink").href = result.broadcast_audio_url;
+    $("downloadBroadcastLink").classList.remove("hidden");
+  } else {
+    $("downloadBroadcastLink").classList.add("hidden");
+  }
   if (result.zip_url) {
     $("downloadZipLink").href = result.zip_url;
     $("downloadZipLink").classList.remove("hidden");
@@ -1377,6 +1391,53 @@ function renderResult(result) {
     $("downloadZipLink").classList.add("hidden");
   }
   renderGeneratedSegments(result);
+}
+
+function renderQualityCheck(check) {
+  const box = $("qualityCheckBox");
+  box.className = `quality-check ${check.level || "review"}`;
+  box.textContent = [
+    `粤语文字机器预检：${Number(check.score || 0).toFixed(1)}%`,
+    check.message || "",
+    check.transcript ? `机器转写：${check.transcript}` : "",
+    "说明：该预检只筛查文字一致性，不能替代粤语编审对发音、语调和专名的人工审听。",
+  ].filter(Boolean).join("\n");
+}
+
+async function qualityCheckCurrentResult(expectedText) {
+  if (!isCantoneseMode() || !state.currentResult?.file_name) {
+    $("qualityCheckBox").classList.add("hidden");
+    return;
+  }
+  const box = $("qualityCheckBox");
+  box.className = "quality-check review";
+  box.textContent = "正在执行粤语文字一致性预检……";
+  try {
+    const payload = await fetchJson("/api/quality-check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: state.currentResult.file_name, text: expectedText }),
+    });
+    state.currentResult.quality_check = payload.result;
+    renderQualityCheck(payload.result);
+  } catch (error) {
+    box.className = "quality-check review";
+    box.textContent = `粤语文字机器预检未完成：${error.message}\n生成音频不受影响，请进行人工审听。`;
+  }
+}
+
+async function changeLlmVariant() {
+  const selected = $("llmVariantSelect").value || "rl";
+  const payload = await fetchJson("/api/model-variant", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ variant: selected }),
+  });
+  if (state.status?.runtime) {
+    state.status.runtime.configured_llm_variant = payload.variant;
+    state.status.runtime.engine_initialized = false;
+  }
+  setStatus(`${payload.message} 当前选择：${selected === "rl" ? "RL 强化版" : "基础版"}。`);
 }
 
 function toggleSegmentEditor(index) {
@@ -1455,6 +1516,7 @@ async function generate() {
   stopBusyProgress(100, `已生成完成，共 ${payload.result.segments_count || 1} 段。`);
   renderResult(payload.result);
   setStatus(`生成成功，共 ${payload.result.segments_count || 1} 段，当前语速 ${Number($("speechRate").value).toFixed(2)}x。`);
+  await qualityCheckCurrentResult(targetText);
   await saveCurrentHistory();
 }
 
@@ -1520,10 +1582,11 @@ async function regenerateSegment(index) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ segments: newSegments, build_zip: true }),
   });
-  state.currentResult = { ...state.currentResult, file_name: rebuilt.result.filename, audio_url: rebuilt.result.audio_url, zip_url: rebuilt.result.zip_url, zip_filename: rebuilt.result.zip_filename, segments: newSegments, segments_count: rebuilt.result.segments_count };
+  state.currentResult = { ...state.currentResult, file_name: rebuilt.result.filename, audio_url: rebuilt.result.audio_url, zip_url: rebuilt.result.zip_url, zip_filename: rebuilt.result.zip_filename, broadcast_audio_url: rebuilt.result.broadcast_audio_url, broadcast_filename: rebuilt.result.broadcast_filename, broadcast_spec: rebuilt.result.broadcast_spec, broadcast_warning: rebuilt.result.broadcast_warning, segments: newSegments, segments_count: rebuilt.result.segments_count };
   stopBusyProgress(100, `第 ${index} 段已重生成并完成整篇拼接。`);
   renderResult(state.currentResult);
   setStatus(`第 ${index} 段已重生成并重新拼接整篇结果。`);
+  await qualityCheckCurrentResult(isCantoneseMode() ? ($("translatedText").value || "") : "");
   await saveCurrentHistory();
 }
 
@@ -1563,12 +1626,17 @@ async function restoreOriginalSegment(index) {
     audio_url: rebuilt.result.audio_url,
     zip_url: rebuilt.result.zip_url,
     zip_filename: rebuilt.result.zip_filename,
+    broadcast_audio_url: rebuilt.result.broadcast_audio_url,
+    broadcast_filename: rebuilt.result.broadcast_filename,
+    broadcast_spec: rebuilt.result.broadcast_spec,
+    broadcast_warning: rebuilt.result.broadcast_warning,
     segments: restoredSegments,
     segments_count: rebuilt.result.segments_count,
   });
   stopBusyProgress(100, `第 ${index} 段已恢复原始生成并完成整篇拼接。`);
   renderResult(state.currentResult);
   setStatus(`第 ${index} 段已恢复原始生成。`);
+  await qualityCheckCurrentResult(isCantoneseMode() ? ($("translatedText").value || "") : "");
   await saveCurrentHistory();
 }
 
@@ -1730,6 +1798,10 @@ async function buildWorkspacePayload() {
       segments_count: currentResult.segments_count || 1,
       audio_url: currentResult.audio_url || "",
       zip_url: currentResult.zip_url || "",
+      broadcast_audio_url: currentResult.broadcast_audio_url || "",
+      broadcast_filename: currentResult.broadcast_filename || "",
+      broadcast_spec: currentResult.broadcast_spec || "",
+      quality_check: currentResult.quality_check || null,
       segments: currentResult.segments || [],
       result_state: "最新结果",
       voice_id: voiceId,
@@ -1763,6 +1835,7 @@ async function buildWorkspacePayload() {
       <div class="history-actions">
         <button class="secondary history-apply-btn" data-id="${item.id}" type="button">恢复到当前界面</button>
         ${item.audio_url ? `<a class="download-link" href="${item.audio_url}" target="_blank">打开结果音频</a>` : ""}
+        ${item.broadcast_audio_url ? `<a class="download-link" href="${item.broadcast_audio_url}" target="_blank">广播母版</a>` : ""}
       </div>
     </div>
   `).join("");
@@ -1825,6 +1898,12 @@ function applyWorkspaceItem(item, sourceLabel = "历史任务") {
     $("downloadLink").href = item.audio_url;
     $("downloadLink").classList.remove("hidden");
   }
+  if (item.broadcast_audio_url) {
+    $("downloadBroadcastLink").href = item.broadcast_audio_url;
+    $("downloadBroadcastLink").classList.remove("hidden");
+  } else {
+    $("downloadBroadcastLink").classList.add("hidden");
+  }
   if (item.zip_url) {
     $("downloadZipLink").href = item.zip_url;
     $("downloadZipLink").classList.remove("hidden");
@@ -1836,6 +1915,10 @@ function applyWorkspaceItem(item, sourceLabel = "历史任务") {
       file_name: item.audio_url.split("/").pop(),
       audio_url: item.audio_url,
       zip_url: item.zip_url,
+      broadcast_audio_url: item.broadcast_audio_url,
+      broadcast_filename: item.broadcast_filename,
+      broadcast_spec: item.broadcast_spec,
+      quality_check: item.quality_check,
       segments: item.segments || [],
       segments_count: item.segments_count || (item.segments?.length || 1),
       auto_segment_used: item.auto_segment_used,
@@ -1860,12 +1943,15 @@ function applyWorkspaceItem(item, sourceLabel = "历史任务") {
       $("segmentList").innerHTML = "";
     }
     renderResult(state.currentResult);
+    if (item.quality_check) renderQualityCheck(item.quality_check);
   } else {
     state.currentResult = null;
     $("resultState").textContent = "等待生成结果";
     $("resultSummary").textContent = "尚未生成可下载内容。";
     $("downloadLink").classList.add("hidden");
+    $("downloadBroadcastLink").classList.add("hidden");
     $("downloadZipLink").classList.add("hidden");
+    $("qualityCheckBox").classList.add("hidden");
     $("toggleSegmentsBtn").disabled = true;
     $("toggleSegmentsBtn").textContent = "查看分段详情";
     state.segmentsExpanded = false;
@@ -2058,6 +2144,13 @@ function bindEvents() {
       setStatus(`生成失败：${error.message}`);
     }
   });
+    $("llmVariantSelect").addEventListener("change", async () => {
+      try {
+        await changeLlmVariant();
+      } catch (error) {
+        setStatus(`模型权重切换失败：${error.message}`);
+      }
+    });
     $("toggleSegmentsBtn").addEventListener("click", toggleSegments);
     $("toggleResultSummaryBtn").addEventListener("click", () => toggleResultSummary());
     $("toggleHistoryBtn").addEventListener("click", () => toggleHistory());

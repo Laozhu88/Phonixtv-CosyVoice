@@ -87,6 +87,9 @@ class AppConfig:
         self.rainfall_model_dir = self.rainfall_home / "models" / "CosyVoice3-0.5B"
         self.rainfall_output_dir = self.rainfall_home / "outputs"
         self.engine_backend = _setting("PHOENIX_ENGINE_BACKEND", "rainfall", "engine_backend")
+        self.llm_variant = str(_setting("PHOENIX_LLM_VARIANT", "rl", "llm_variant")).strip().lower()
+        if self.llm_variant not in {"base", "rl"}:
+            self.llm_variant = "rl"
         self.official_cosyvoice_root = Path(_setting("PHOENIX_OFFICIAL_COSYVOICE_ROOT", str(self.rainfall_home), "official_cosyvoice_root"))
         self.official_model_dir = Path(_setting("PHOENIX_OFFICIAL_MODEL_DIR", str(self.official_cosyvoice_root / "pretrained_models" / "Fun-CosyVoice3-0.5B"), "official_model_dir"))
         self.asr_python = DEFAULT_ASR_PYTHON
@@ -168,6 +171,15 @@ class AppConfig:
         for key in allowed_keys:
             if key in LOCAL_SETTINGS:
                 setattr(self, key, LOCAL_SETTINGS[key])
+
+    def update_llm_variant(self, variant: str) -> str:
+        normalized = (variant or "").strip().lower()
+        if normalized not in {"base", "rl"}:
+            raise ValueError("模型权重仅支持 base 或 rl。")
+        LOCAL_SETTINGS["llm_variant"] = normalized
+        _save_local_settings()
+        self.llm_variant = normalized
+        return normalized
 
     def clear_translation_credentials(self, provider: str) -> None:
         """Remove saved credentials for one provider without exposing any secret."""

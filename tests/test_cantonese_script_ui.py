@@ -18,6 +18,12 @@ class CantoneseScriptUiTest(unittest.TestCase):
         self.assertIn('targetText = ($("translatedText").value || "").trim()', self.js)
         self.assertIn('formData.append("segment_mode", getSegmentMode())', self.js)
 
+    def test_quality_and_broadcast_controls_are_present(self):
+        self.assertIn('id="downloadBroadcastLink"', self.html)
+        self.assertIn('id="qualityCheckBox"', self.html)
+        self.assertIn('id="llmVariantSelect"', self.html)
+        self.assertIn('fetchJson("/api/quality-check"', self.js)
+
 
 if __name__ == "__main__":
     unittest.main()

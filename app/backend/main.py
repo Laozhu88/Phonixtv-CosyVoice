@@ -107,6 +107,15 @@ def api_status() -> dict:
     }
 
 
+@app.post("/api/model-variant")
+def api_model_variant(payload: dict = Body(...)) -> dict:
+    try:
+        variant = service.set_llm_variant(payload.get("variant") or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "variant": variant, "message": "模型权重已切换，将在下次生成时重新加载。"}
+
+
 @app.post("/api/preview-segments")
 async def api_preview_segments(
     text: str = Form(...),
@@ -233,6 +242,21 @@ def api_rebuild_output(payload: dict = Body(...)) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"重建结果失败：{exc}") from exc
+    return {"ok": True, "result": result}
+
+
+@app.post("/api/quality-check")
+def api_quality_check(payload: dict = Body(...)) -> dict:
+    filename = Path(payload.get("filename") or "").name
+    expected_text = (payload.get("text") or "").strip()
+    if not filename or not expected_text:
+        raise HTTPException(status_code=400, detail="缺少待质检音频或播报稿。")
+    try:
+        result = service.quality_check_generated(config.output_dir / filename, expected_text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"文字质检失败：{exc}") from exc
     return {"ok": True, "result": result}
 
 

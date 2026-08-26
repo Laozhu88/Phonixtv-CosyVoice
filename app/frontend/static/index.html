@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>凤凰卫视中文台多语种、多方言智能配音工作台</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260820d" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260826-cantonese2" />
     <script src="/static/vendor/wavesurfer/wavesurfer.min.js?v=7.12.11"></script>
     <script src="/static/vendor/wavesurfer/regions.min.js?v=7.12.11"></script>
   </head>
@@ -143,8 +143,10 @@
             </div>
             <div class="actions-row result-downloads">
               <a class="download-link hidden" id="downloadLink" href="" target="_blank">下载生成音频</a>
+              <a class="download-link hidden" id="downloadBroadcastLink" href="" target="_blank">下载广播母版 WAV</a>
               <a class="download-link hidden" id="downloadZipLink" href="" target="_blank">下载分段压缩包</a>
             </div>
+            <div class="quality-check hidden" id="qualityCheckBox"></div>
           </section>
 
         </section>
@@ -198,6 +200,14 @@
             <div class="section-head compact-head">
               <h2>提示文本与高级控制</h2>
             </div>
+            <label class="field">
+              <span>CosyVoice3 语言模型权重</span>
+              <select id="llmVariantSelect">
+                <option value="rl">RL 强化版（推荐）</option>
+                <option value="base">基础版（用于同稿对比）</option>
+              </select>
+              <small class="help">切换后会释放当前模型，并在下一次生成时重新加载；不增加模型包体积。</small>
+            </label>
             <label class="field">
               <span>参考音频识别文字 / 提示文本</span>
               <textarea id="promptText" rows="6" placeholder="参考音色播报模式建议填写与参考音频一致的提示文本；跨语种/多方言模式可留空。"></textarea>
@@ -336,6 +346,6 @@
       </form>
     </dialog>
 
-  <script src="/static/app.js?v=20260826-cantonese1"></script>
+  <script src="/static/app.js?v=20260826-cantonese2"></script>
     </body>
 </html>

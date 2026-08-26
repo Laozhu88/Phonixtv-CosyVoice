@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from difflib import SequenceMatcher
+import gc
 import hashlib
 import json
 import os
@@ -225,7 +227,26 @@ class RainfallCosyVoiceService:
             "engine_initialized": self._engine is not None,
             "device_name": device_name,
             "llm_variant": str(self._engine_runtime.get("llm_variant") or "not_loaded"),
+            "configured_llm_variant": config.llm_variant,
         }
+
+    def set_llm_variant(self, variant: str) -> str:
+        previous = config.llm_variant
+        normalized = config.update_llm_variant(variant)
+        if self.engine_backend == "official":
+            return "official"
+        if normalized == previous:
+            return normalized
+        if self._engine is not None:
+            self._engine = None
+            self._registered_prompt_speakers.clear()
+            self._prompt_embedding_cache.clear()
+            self._preset_embedding_cache.clear()
+            gc.collect()
+            if self._torch is not None and self._torch.cuda.is_available():
+                self._torch.cuda.empty_cache()
+        self._engine_runtime = {"fp16": False, "cuda": False, "llm_variant": "not_loaded"}
+        return normalized
 
     def capabilities(self) -> dict:
         return {
@@ -344,17 +365,19 @@ class RainfallCosyVoiceService:
             self._engine = AutoModel(model_dir=str(self.model_dir))
         else:
             from cosyvoice.cli.cosyvoice import CosyVoice3
-            rl_model_path = self.model_dir / "llm.rl.pt"
-            if not rl_model_path.exists():
-                raise FileNotFoundError(f"CosyVoice3 RL model not found: {rl_model_path}")
-            self._engine_runtime = {"fp16": cuda_available, "cuda": cuda_available, "llm_variant": "loading_rl"}
+            variant = config.llm_variant
+            self._engine_runtime = {"fp16": cuda_available, "cuda": cuda_available, "llm_variant": f"loading_{variant}"}
             try:
                 self._engine = CosyVoice3(str(self.model_dir), load_trt=False, load_vllm=False, fp16=cuda_available)
-                rl_state_dict = torch.load(str(rl_model_path), map_location="cpu")
-                self._engine.model.llm.load_state_dict(rl_state_dict, strict=True)
-                self._engine.model.llm.to(self._engine.model.device).eval()
-                del rl_state_dict
-                self._engine_runtime["llm_variant"] = "rl"
+                if variant == "rl":
+                    rl_model_path = self.model_dir / "llm.rl.pt"
+                    if not rl_model_path.exists():
+                        raise FileNotFoundError(f"CosyVoice3 RL model not found: {rl_model_path}")
+                    state_dict = torch.load(str(rl_model_path), map_location="cpu")
+                    self._engine.model.llm.load_state_dict(state_dict, strict=True)
+                    self._engine.model.llm.to(self._engine.model.device).eval()
+                    del state_dict
+                self._engine_runtime["llm_variant"] = variant
             except Exception:
                 self._engine = None
                 self._engine_runtime["llm_variant"] = "load_failed"
@@ -748,7 +771,9 @@ class RainfallCosyVoiceService:
         model_dir = self._resolve_sensevoice_model_dir()
         if model_dir is None:
             raise ValueError(f"未找到本地 SenseVoiceSmall 模型：{self._sensevoice_model_candidates()[0]}")
-        python_path = Path(config.asr_python)
+        # The bundled Rainfall runtime carries FunASR; older standalone ASR
+        # runtimes may only contain faster-whisper.
+        python_path = self.embedded_python if self.embedded_python.exists() else Path(config.asr_python)
         script = r'''
 import json
 import re
@@ -946,6 +971,87 @@ print(json.dumps({"text": text, "language": language or "zh"}, ensure_ascii=Fals
         out_path = config.output_dir / file_name
         self._write_pcm_wav(out_path, speech)
         return file_name, out_path
+
+    def _ffmpeg_path(self) -> str | None:
+        candidates = [
+            shutil.which("ffmpeg"),
+            str(self.rainfall_home / "python" / "ffmpeg" / "bin" / "ffmpeg.exe"),
+        ]
+        return next((item for item in candidates if item and Path(item).exists()), None)
+
+    def _create_broadcast_master(self, source_path: Path, output_name: str | None = None) -> dict:
+        ffmpeg = self._ffmpeg_path()
+        if not ffmpeg:
+            return {"broadcast_audio_url": None, "broadcast_filename": None, "broadcast_warning": "未找到 FFmpeg，未生成广播母版。"}
+        filename = self._build_named_output_filename(output_name, "phoenix_broadcast_master", suffix="broadcast")
+        output_path = config.output_dir / filename
+        work_dir = config.rainfall_output_dir
+        work_dir.mkdir(parents=True, exist_ok=True)
+        token = uuid.uuid4().hex
+        work_input = work_dir / f"phoenix_broadcast_input_{token}.wav"
+        work_output = work_dir / f"phoenix_broadcast_output_{token}.wav"
+        command = [
+            ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(work_input),
+            "-af", "loudnorm=I=-23:LRA=7:TP=-2", "-ar", "48000", "-ac", "1",
+            "-c:a", "pcm_s24le", str(work_output),
+        ]
+        try:
+            shutil.copy2(source_path, work_input)
+            completed = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
+            if completed.returncode != 0 or not work_output.exists():
+                detail = (completed.stderr or completed.stdout or "").strip()[-500:]
+                raise RuntimeError(detail or f"FFmpeg 返回代码 {completed.returncode}")
+            shutil.copy2(work_output, output_path)
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
+            if output_path.exists():
+                output_path.unlink()
+            return {"broadcast_audio_url": None, "broadcast_filename": None, "broadcast_warning": f"广播母版生成失败：{exc}"}
+        finally:
+            for temporary_path in (work_input, work_output):
+                if temporary_path.exists():
+                    temporary_path.unlink()
+        return {
+            "broadcast_audio_url": f"/api/outputs/{filename}",
+            "broadcast_filename": filename,
+            "broadcast_warning": "",
+            "broadcast_spec": "48kHz / 24-bit PCM / mono / -23 LUFS / -2 dBTP",
+        }
+
+    def _normalize_quality_text(self, text: str) -> str:
+        normalized = text or ""
+        try:
+            from opencc import OpenCC
+            normalized = OpenCC("t2s").convert(normalized)
+        except (ImportError, OSError):
+            pass
+        return re.sub(r"[^0-9A-Za-z\u3400-\u9fff]", "", normalized).lower()
+
+    def quality_check_generated(self, audio_path: Path, expected_text: str) -> dict:
+        if not audio_path.exists() or audio_path.parent.resolve() != config.output_dir.resolve():
+            raise ValueError("待质检音频不存在或路径无效。")
+        transcription = self.transcribe_reference(audio_path)
+        expected = self._normalize_quality_text(expected_text)
+        actual = self._normalize_quality_text(transcription.get("text") or "")
+        if not expected or not actual:
+            score = 0.0
+        else:
+            score = SequenceMatcher(None, expected, actual, autojunk=False).ratio()
+        if score >= 0.90:
+            level = "pass"
+            message = "机器预检未发现明显漏读、错读或异常增字，仍须人工审听语调和专名。"
+        elif score >= 0.78:
+            level = "review"
+            message = "机器预检发现文字差异，建议对照播报稿重点复核。"
+        else:
+            level = "fail"
+            message = "机器预检发现较大文字差异，不建议直接作为播出成品。"
+        return {
+            "level": level,
+            "score": round(score * 100, 1),
+            "transcript": transcription.get("text") or "",
+            "detected_language": transcription.get("language") or "",
+            "message": message,
+        }
 
     def _normalize_output_name(self, value: str | None) -> str:
         text = (value or "").strip()
@@ -1202,6 +1308,7 @@ print(json.dumps({"text": text, "language": language or "zh"}, ensure_ascii=Fals
         merged_name = self._build_named_output_filename(normalized_output_name, "phoenix_merged_rebuilt")
         merged_path = config.output_dir / merged_name
         self._write_pcm_wav(merged_path, merged)
+        broadcast = self._create_broadcast_master(merged_path, normalized_output_name)
         zip_url = None
         zip_name = None
         if build_zip and len(normalized) > 1:
@@ -1209,7 +1316,7 @@ print(json.dumps({"text": text, "language": language or "zh"}, ensure_ascii=Fals
             zip_path = config.output_dir / zip_name
             self._build_segments_zip([{"index": item["index"], "text": item["text"], "file_path": item["file_path"]} for item in normalized], zip_path)
             zip_url = f"/api/outputs/{zip_name}"
-        return {"audio_url": f"/api/outputs/{merged_name}", "filename": merged_name, "zip_url": zip_url, "zip_filename": zip_name, "segments_count": len(normalized), "output_name_base": normalized_output_name}
+        return {"audio_url": f"/api/outputs/{merged_name}", "filename": merged_name, "zip_url": zip_url, "zip_filename": zip_name, "segments_count": len(normalized), "output_name_base": normalized_output_name, **broadcast}
 
     def _build_segments_zip(self, segments: list[dict], zip_output_path: Path) -> None:
         manifest_lines = []
@@ -1340,6 +1447,10 @@ print(json.dumps({"text": text, "language": language or "zh"}, ensure_ascii=Fals
             "audio_url": rebuild["audio_url"],
             "zip_url": rebuild["zip_url"],
             "zip_filename": rebuild["zip_filename"],
+            "broadcast_audio_url": rebuild.get("broadcast_audio_url"),
+            "broadcast_filename": rebuild.get("broadcast_filename"),
+            "broadcast_spec": rebuild.get("broadcast_spec"),
+            "broadcast_warning": rebuild.get("broadcast_warning"),
             "sample_rate": self._engine.sample_rate,
             "mode": mode,
             "requested_mode": requested_mode,

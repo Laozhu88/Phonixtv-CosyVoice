@@ -334,6 +334,10 @@ button {
 .result-summary { margin-top: 10px; font-size: 13px; line-height: 1.7; color: #d8e1ea; white-space: pre-line; }
 .result-downloads { margin-top: 12px; }
 .download-link { color: var(--warn); font-weight: 700; text-decoration: none; align-self: center; }
+.quality-check { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; white-space: pre-wrap; line-height: 1.65; }
+.quality-check.pass { border-color: #287a4b; color: #a9e5bd; }
+.quality-check.review { border-color: #9b6a18; color: #ffd27b; }
+.quality-check.fail { border-color: #8f3939; color: #ffaaaa; }
 .voice-actions { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 12px; }
 .right-stack .panel { padding: 14px; }
 .right-stack .compact-head h2 { font-size: 17px; }
