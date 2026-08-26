@@ -818,6 +818,26 @@ print(json.dumps({"text": text, "language": language or "zh"}, ensure_ascii=Fals
         text = re.sub(r"\r\n?|\n", "\n", text or "").strip()
         if not text:
             return []
+        if mode == "cantonese_news":
+            units = [item.strip() for item in re.findall(r"[^。！？!?；;\n]+[。！？!?；;]?[”’」』】）》〕]*", text) if item.strip()]
+            chunks: list[str] = []
+            current = ""
+            for unit in units:
+                pieces = [unit]
+                if len(unit) > 56:
+                    pieces = [item.strip() for item in re.findall(r"[^，,、：:]+[，,、：:]?", unit) if item.strip()]
+                for piece in pieces:
+                    if current and len(current) + len(piece) > 56:
+                        chunks.append(current)
+                        current = piece
+                    else:
+                        current += piece
+                    if re.search(r"[。！？!?；;]$", current) and len(current) >= 24:
+                        chunks.append(current)
+                        current = ""
+            if current:
+                chunks.append(current)
+            return chunks or [text]
         return [item.strip() for item in re.split(r"\n+", text) if item and item.strip()]
 
     def split_text_by_paragraphs(self, text: str) -> list[str]:
@@ -855,6 +875,25 @@ print(json.dumps({"text": text, "language": language or "zh"}, ensure_ascii=Fals
             chunks.append(tensor)
             if pause is not None and index < len(tensors) - 1:
                 chunks.append(pause)
+        return self._torch.cat(chunks, dim=1)
+
+    def _concat_spoken_subsegments(self, tensors: list, texts: list[str]):
+        if len(tensors) <= 1:
+            return tensors[0]
+        chunks = []
+        sample_rate = self._engine.sample_rate
+        for index, tensor in enumerate(tensors):
+            chunks.append(tensor)
+            if index >= len(tensors) - 1:
+                continue
+            previous_text = texts[index].rstrip()
+            if re.search(r"[。！？!?]$", previous_text):
+                pause_seconds = 0.28
+            elif re.search(r"[；;]$", previous_text):
+                pause_seconds = 0.20
+            else:
+                pause_seconds = 0.14
+            chunks.append(self._torch.zeros((1, int(sample_rate * pause_seconds)), dtype=tensor.dtype))
         return self._torch.cat(chunks, dim=1)
 
     def _write_pcm_wav(self, out_path: Path, speech) -> None:
@@ -950,6 +989,9 @@ print(json.dumps({"text": text, "language": language or "zh"}, ensure_ascii=Fals
             lang_text = LANGUAGE_TEXT_MAP.get(language_value, "中文")
             clauses.append(f"请用{lang_text}表达。")
 
+        if language_value == "zh" and dialect_value == "cantonese" and (scenario or "").strip().lower() == "news":
+            clauses.append("请采用香港电视新闻播报语气，沉稳自然，停连清楚，避免普通话腔。")
+
         if explicit:
             reverse_dialect_map = {label: key for key, label in DIALECT_TEXT_MAP.items()}
             mapped_key = reverse_dialect_map.get(explicit) or reverse_dialect_map.get(explicit.replace(" / 广东话", "")) or reverse_dialect_map.get(explicit.replace(" / 广东话", ""))
@@ -1035,6 +1077,10 @@ print(json.dumps({"text": text, "language": language or "zh"}, ensure_ascii=Fals
         local_chunks = []
         effective_mode = mode
         control_instruction = self._build_control_instruction(language=language, dialect=dialect, scenario=scenario, instruction=instruction, speed=speed)
+        if effective_mode == "zero_shot" and self._target_speech_language(language, dialect) == "yue":
+            # A native Cantonese reference already carries pronunciation and cadence.
+            # Do not wrap its transcript in a generic dialect instruction.
+            control_instruction = None
         if self.engine_backend == "official":
             iterator = self._official_iterator(
                 text=text,
@@ -1200,7 +1246,18 @@ print(json.dumps({"text": text, "language": language or "zh"}, ensure_ascii=Fals
         effective_mode = mode
         source_language = self._detect_reference_language(prompt_language, prompt_text)
         target_language = self._target_speech_language(language, dialect)
-        if prompt_wav_path is not None and preset_voice is None and source_language and target_language and source_language != target_language:
+        if target_language == "yue" and prompt_wav_path is not None and preset_voice is None:
+            if not (prompt_text or "").strip():
+                effective_mode = "cross_lingual"
+                warning = "粤语参考音频识别文字为空，已切换跨语种兼容模式；补充准确粤语文字可提高稳定性。"
+            elif source_language and source_language != target_language:
+                effective_mode = "cross_lingual"
+                warning = f"参考音频语言为 {source_language}，目标语言为 {target_language}，已自动切换跨语种音色克隆。"
+            else:
+                effective_mode = "zero_shot"
+                warning = None
+                control_instruction = None
+        elif prompt_wav_path is not None and preset_voice is None and source_language and target_language and source_language != target_language:
             effective_mode = "cross_lingual"
             warning = f"参考音频语言为 {source_language}，目标语言为 {target_language}，已自动切换跨语种音色克隆。"
         elif control_instruction and (preset_voice is not None or prompt_wav_path is not None):
@@ -1273,7 +1330,7 @@ print(json.dumps({"text": text, "language": language or "zh"}, ensure_ascii=Fals
         segment_results = []
         for user_seg in user_segments:
             subsegment_tensors = [self._synthesize_text(text=sub_text, mode=mode, prompt_text=prompt_text, prompt_wav_path=prompt_wav_path, speed=speed, text_frontend=text_frontend, instruction=instruction, language=language, dialect=dialect, scenario=scenario, voice_id=voice_id, preset_voice=preset_voice, style=style, style_intensity=style_intensity) for sub_text in user_seg["subsegments"]]
-            segment_tensor = self._concat_tensors(subsegment_tensors, add_pause=True)
+            segment_tensor = self._concat_spoken_subsegments(subsegment_tensors, user_seg["subsegments"])
             file_name, file_path = self._save_tensor_to_output(segment_tensor, f"phoenix_segment_{user_seg['index']:02d}")
             segment_results.append({"index": user_seg["index"], "text": user_seg["text"], "audio_url": f"/api/outputs/{file_name}", "file_name": file_name, "file_path": str(file_path), "subsegments_count": len(user_seg["subsegments"]), "used_fallback": bool(warning)})
         rebuild = self.rebuild_outputs_from_segments(segment_results, build_zip=len(segment_results) > 1, output_name=output_name)

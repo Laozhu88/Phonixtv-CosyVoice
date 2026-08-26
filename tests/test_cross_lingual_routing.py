@@ -41,6 +41,28 @@ class CrossLingualRoutingTest(unittest.TestCase):
         self.assertEqual(mode, "zero_shot")
         self.assertIsNone(warning)
 
+    def test_cantonese_reference_to_cantonese_keeps_zero_shot(self):
+        mode, warning, instruction = self.resolve(
+            "各位观众晚上好，我哋而家开始新闻。",
+            "yue",
+            dialect="cantonese",
+        )
+
+        self.assertEqual(mode, "zero_shot")
+        self.assertIsNone(warning)
+        self.assertIsNone(instruction)
+
+    def test_mandarin_reference_to_cantonese_uses_cross_lingual(self):
+        mode, warning, _ = self.resolve(
+            "各位观众晚上好，现在开始新闻。",
+            "zh",
+            dialect="cantonese",
+        )
+
+        self.assertEqual(mode, "cross_lingual")
+        self.assertIn("zh", warning)
+        self.assertIn("yue", warning)
+
 
 if __name__ == "__main__":
     unittest.main()

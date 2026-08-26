@@ -17,6 +17,22 @@ function getCurrentMode() {
   return "zero_shot";
 }
 
+function isCantoneseMode(languageValue = $("language")?.value, dialectValue = $("dialect")?.value) {
+  return (languageValue || "zh") === "zh" && (dialectValue || "mandarin") === "cantonese";
+}
+
+function usesTranslatedScript() {
+  return ($("language").value || "zh") !== "zh" || isCantoneseMode();
+}
+
+function getTranslationTargetLanguage() {
+  return isCantoneseMode() ? "yue" : ($("language").value || "zh");
+}
+
+function getSegmentMode() {
+  return isCantoneseMode() ? "cantonese_news" : "natural";
+}
+
 const state = {
   status: null,
   currentResult: null,
@@ -148,7 +164,9 @@ function updateSegmentSummaryLive() {
 function applyLanguageChangeState(nextLanguage) {
   if (nextLanguage === "zh") {
     $("text").value = state.sourceTextZh || $("text").value || "";
-    $("translatedText").value = "";
+    if (!isCantoneseMode(nextLanguage, $("dialect").value)) {
+      $("translatedText").value = "";
+    }
     updateCharCount();
   } else if (!state.sourceTextZh) {
     state.sourceTextZh = $("text").value || "";
@@ -796,6 +814,7 @@ function normalizeTemplateName(value) {
 
 function getScenarioValueFor(languageValue, dialectValue) {
   if ((languageValue || "zh") !== "zh") return "multilingual";
+  if ((dialectValue || "mandarin") === "cantonese") return "news";
   return dialectValue && dialectValue !== "mandarin" ? "dialect" : "news";
 }
 
@@ -1033,21 +1052,29 @@ async function openTranslationSettings() {
 }
 
 function updateTranslationPanel() {
-  $("translatePanel").classList.add("hidden");
-  if ($("language").value === "zh") {
+  const cantoneseMode = isCantoneseMode();
+  const translatedMode = usesTranslatedScript();
+  $("translatePanel").classList.toggle("hidden", !translatedMode);
+  $("sourceScriptLabel").textContent = cantoneseMode ? "第一步：原始中文稿" : "配音文稿";
+  $("translatedScriptLabel").textContent = cantoneseMode ? "第二步：粤语播报稿（人工确认后配音）" : "自动译稿（可人工修改）";
+  $("translatedText").placeholder = cantoneseMode
+    ? "系统会把普通话书面稿转换为香港粤语播报稿。生成配音前请核对人名、地名、数字和专业术语。"
+    : "系统会自动翻译当前中文文稿；这里也可以人工微调译文。";
+  if (!translatedMode) {
     $("translatedText").value = "";
     state.translationSignature = "";
     state.translationEdited = false;
     setTranslationStatus("");
     return;
   }
-  const targetLabel = getLanguageLabel($("language").value);
+  const targetLabel = cantoneseMode ? "香港粤语播报稿" : getLanguageLabel($("language").value);
   const providerReady = !!state.translation?.configured;
-  setTranslationStatus(providerReady ? `当前目标语种：${targetLabel}，系统会自动更新文稿。` : "自动翻译暂不可用。");
+  setTranslationStatus(providerReady ? `当前目标：${targetLabel}，系统会自动生成，可人工修改。` : "自动转换暂不可用，请在译稿框中人工填写后再配音。");
 }
 
 function getTranslationSignature() {
-  return `${$("language").value}|${(state.sourceTextZh || "").trim()}`;
+  const sourceText = isCantoneseMode() ? ($("text").value || "") : (state.sourceTextZh || "");
+  return `${$("language").value}|${$("dialect").value || ""}|${sourceText.trim()}`;
 }
 
 function updateRateValue() {
@@ -1117,6 +1144,7 @@ function applyChannelTemplate(templateId) {
 
 function getScenarioValue() {
   if ($("language").value !== "zh") return "multilingual";
+  if ($("dialect").value === "cantonese") return "news";
   return $("dialect").value && $("dialect").value !== "mandarin" ? "dialect" : "news";
 }
 
@@ -1190,7 +1218,7 @@ async function getBaseFormDataWithText(textValue) {
   formData.append("scenario", getScenarioValue());
   formData.append("style", $("styleSelect").value || "natural");
   formData.append("auto_segment", $("autoSegment").checked ? "true" : "false");
-  formData.append("segment_mode", "natural");
+  formData.append("segment_mode", getSegmentMode());
   if ($("language").value === "zh") {
     formData.append("dialect", $("dialect").value);
   }
@@ -1206,42 +1234,47 @@ async function getBaseFormDataWithText(textValue) {
 }
 
 async function translateCurrentText(force = false) {
-  if ($("language").value === "zh") {
+  const cantoneseMode = isCantoneseMode();
+  if ($("language").value === "zh" && !cantoneseMode) {
     state.sourceTextZh = $("text").value || "";
     return { translated_text: $("text").value || "" };
   }
-  const sourceText = (state.sourceTextZh || "").trim();
+  const sourceText = (cantoneseMode ? ($("text").value || "") : (state.sourceTextZh || "")).trim();
   if (!sourceText) {
-    $("text").value = "";
     $("translatedText").value = "";
     state.translationSignature = "";
     state.translationEdited = false;
     throw new Error("请先输入中文文稿，再进行自动翻译。");
   }
   const signature = getTranslationSignature();
-  const existing = ($("text").value || "").trim();
+  const existing = (cantoneseMode ? ($("translatedText").value || "") : ($("text").value || "")).trim();
   if (!force && existing && state.translationSignature === signature) {
-    setTranslationStatus(`当前译文已就绪：${getLanguageLabel($("language").value)}。`);
+    setTranslationStatus(`当前播报稿已就绪：${cantoneseMode ? "粤语" : getLanguageLabel($("language").value)}。`);
     return { translated_text: existing };
   }
-  setStatus(`正在翻译为${getLanguageLabel($("language").value)}……`);
+  const targetLabel = cantoneseMode ? "香港粤语播报稿" : getLanguageLabel($("language").value);
+  setStatus(`正在生成${targetLabel}……`);
   const fd = new FormData();
   fd.append("text", sourceText);
-  fd.append("target_language", $("language").value);
-  fd.append("source_language", "auto");
+  fd.append("target_language", getTranslationTargetLanguage());
+  fd.append("source_language", cantoneseMode ? "zh" : "auto");
   try {
     const payload = await fetchJson("/api/translate", { method: "POST", body: fd });
-    $("text").value = payload.translated_text || "";
+    if (!cantoneseMode) {
+      $("text").value = payload.translated_text || "";
+    }
     $("translatedText").value = payload.translated_text || "";
     updateCharCount();
     state.translationSignature = signature;
     state.translationEdited = false;
-    setTranslationStatus(`已自动更新${getLanguageLabel($("language").value)}文稿，可直接微调后配音。`);
-    setStatus(`已完成自动翻译，当前目标语种：${getLanguageLabel($("language").value)}。`);
+    setTranslationStatus(`已生成${targetLabel}，请核对人名、地名、数字和专业术语后配音。`);
+    setStatus(`已完成${targetLabel}转换。`);
     return payload;
   } catch (error) {
     if (existing) {
-      setTranslationStatus(`自动翻译暂时失败，已保留当前${getLanguageLabel($("language").value)}文稿，可直接继续配音。`);
+      setTranslationStatus(cantoneseMode
+        ? "自动转换暂时失败，已保留当前粤语播报稿，可人工核对后继续配音。"
+        : `自动翻译暂时失败，已保留当前${getLanguageLabel($("language").value)}文稿，可直接继续配音。`);
       setStatus(`自动翻译失败，已保留当前文稿：${error.message}`);
       return { translated_text: existing, fallback_used: true };
     }
@@ -1267,13 +1300,12 @@ function scheduleAutoTranslate() {
     clearTimeout(state.translationTimer);
     state.translationTimer = null;
   }
-  if ($("language").value === "zh") {
+  if (!usesTranslatedScript()) {
     updateTranslationPanel();
     return;
   }
-  const sourceText = (state.sourceTextZh || "").trim();
+  const sourceText = (isCantoneseMode() ? ($("text").value || "") : (state.sourceTextZh || "")).trim();
   if (!sourceText) {
-    $("text").value = "";
     $("translatedText").value = "";
     state.translationSignature = "";
     state.translationEdited = false;
@@ -1402,14 +1434,24 @@ async function generate() {
   setStatus("正在生成，请稍候……");
   startBusyProgress("已提交生成任务，开始逐段生成", 14, 94);
   let targetText = $("text").value || "";
-  if ($("language").value === "zh") {
+  const cantoneseMode = isCantoneseMode();
+  if (cantoneseMode) {
+    state.sourceTextZh = $("text").value || "";
+    targetText = ($("translatedText").value || "").trim();
+    if (!targetText) {
+      targetText = (await translateCurrentText(false)).translated_text || "";
+    }
+    if (!targetText.trim()) {
+      throw new Error("粤语播报稿为空，请先生成或人工填写粤语播报稿。");
+    }
+  } else if ($("language").value === "zh") {
     state.sourceTextZh = $("text").value || "";
   } else {
     targetText = ($("text").value || "").trim() || (await translateCurrentText(false)).translated_text;
   }
   const payload = await fetchJson("/api/generate", { method: "POST", body: await getBaseFormDataWithText(targetText) });
-  payload.result.source_text = $("language").value === "zh" ? ($("text").value || "") : (state.sourceTextZh || "");
-  payload.result.translated_text = $("language").value === "zh" ? "" : ($("text").value || "");
+  payload.result.source_text = usesTranslatedScript() ? (state.sourceTextZh || "") : ($("text").value || "");
+  payload.result.translated_text = usesTranslatedScript() ? (cantoneseMode ? ($("translatedText").value || "") : ($("text").value || "")) : "";
   stopBusyProgress(100, `已生成完成，共 ${payload.result.segments_count || 1} 段。`);
   renderResult(payload.result);
   setStatus(`生成成功，共 ${payload.result.segments_count || 1} 段，当前语速 ${Number($("speechRate").value).toFixed(2)}x。`);
@@ -1671,17 +1713,20 @@ async function buildWorkspacePayload() {
         setStatus(`历史任务保存时未能附带参考音频：${error.message || error}`);
       }
     }
+  const translatedMode = usesTranslatedScript();
+  const sourceText = translatedMode ? (state.sourceTextZh || "") : ($("text").value || "");
+  const translatedText = translatedMode ? (isCantoneseMode() ? ($("translatedText").value || "") : ($("text").value || "")) : "";
   return {
-      text: $("language").value === "zh" ? $("text").value : (state.sourceTextZh || ""),
-      text_preview: ($("language").value === "zh" ? $("text").value : (state.sourceTextZh || "")).slice(0, 120),
-      translated_text: $("language").value === "zh" ? "" : ($("text").value || ""),
-      translated_preview: ($("language").value === "zh" ? "" : ($("text").value || "")).slice(0, 120),
+      text: sourceText,
+      text_preview: sourceText.slice(0, 120),
+      translated_text: translatedText,
+      translated_preview: translatedText.slice(0, 120),
       language: $("language").value,
         dialect: $("language").value === "zh" ? $("dialect").value : "",
         mode: currentResult.mode || getCurrentMode(),
       speech_rate: Number($("speechRate").value).toFixed(2),
       auto_segment_used: $("autoSegment").checked,
-      segment_mode: "natural",
+      segment_mode: getSegmentMode(),
       segments_count: currentResult.segments_count || 1,
       audio_url: currentResult.audio_url || "",
       zip_url: currentResult.zip_url || "",
@@ -1735,9 +1780,9 @@ function applyWorkspaceItem(item, sourceLabel = "历史任务") {
   state.sourceTextZh = item.text || "";
   $("text").value = (item.language || "zh") === "zh" ? (item.text || "") : (item.translated_text || item.text || "");
   $("language").value = item.language || "zh";
+  if (item.dialect) $("dialect").value = item.dialect;
   updateDialectVisibility();
   updateTranslationPanel();
-  if (item.dialect) $("dialect").value = item.dialect;
   $("speechRate").value = Number(item.speech_rate || 1).toFixed(2);
   $("autoSegment").checked = !!item.auto_segment_used;
   $("promptText").value = item.prompt_text || "";
@@ -1746,8 +1791,8 @@ function applyWorkspaceItem(item, sourceLabel = "历史任务") {
   $("translatedText").value = item.translated_text || "";
   state.translationSignature = getTranslationSignature();
   state.translationEdited = false;
-  if ($("language").value !== "zh" && (item.translated_text || "").trim()) {
-    setTranslationStatus(`已恢复${getLanguageLabel($("language").value)}译文，可直接继续配音。`);
+  if (usesTranslatedScript() && (item.translated_text || "").trim()) {
+    setTranslationStatus(`已恢复${isCantoneseMode() ? "粤语播报稿" : `${getLanguageLabel($("language").value)}译文`}，可继续人工修改后配音。`);
   }
   if (item.voice_id) {
     state.pendingPromptClipRestore = promptClipRestore;
@@ -1958,7 +2003,11 @@ function bindEvents() {
     });
   $("dialect").addEventListener("change", () => {
       clearTemplateSelectionIfDirty("方言已改动，已退出模板状态。");
+      state.sourceTextZh = $("text").value || state.sourceTextZh || "";
       updateDialectVisibility();
+      state.translationEdited = false;
+      updateTranslationPanel();
+      scheduleAutoTranslate();
     });
     $("channelTemplateSelect").addEventListener("change", () => applyChannelTemplate($("channelTemplateSelect").value));
     $("saveChannelTemplateBtn").addEventListener("click", async () => { try { await saveCurrentChannelTemplate(); } catch (error) { setStatus(`保存模板失败：${error.message}`); } });
@@ -1974,6 +2023,13 @@ function bindEvents() {
   });
     $("translatedText").addEventListener("input", () => {
       state.translationEdited = true;
+    });
+    $("refreshTranslationBtn").addEventListener("click", async () => {
+      try {
+        await translateCurrentText(true);
+      } catch (error) {
+        setStatus(`播报稿生成失败：${error.message}`);
+      }
     });
     $("resultWavePlayBtn").addEventListener("click", () => {
       if (!state.resultWave) return;

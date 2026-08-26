@@ -30,7 +30,7 @@
             </div>
 
             <label class="field">
-              <span>配音文稿</span>
+              <span id="sourceScriptLabel">配音文稿</span>
               <textarea id="text" placeholder="请输入要配音的文稿。短篇、长篇都可输入，建议先用自然段整理好结构。"></textarea>
             </label>
 
@@ -65,12 +65,16 @@
             <div class="help" id="dialectHint">推荐先用一两句短文本试听，再决定是否用于整篇配音。</div>
 
             <div class="translation-settings-row">
-              <div class="help">选择外语语种后会自动翻译文稿。可在翻译设置中切换翻译平台或大模型。</div>
+              <div class="help">外语会自动翻译；选择粤语后会保留原始中文稿，并生成可人工修改的粤语播报稿。</div>
               <button class="secondary ghost-mini" id="translationSettingsBtn" type="button">翻译设置</button>
             </div>
 
             <div class="translate-box hidden" id="translatePanel">
-              <div class="help" id="translateStatus">选择外语语种后，将自动生成对应译文。</div>
+              <div class="section-head small-head no-border">
+                <h3 id="translatedScriptLabel">自动译稿</h3>
+                <button class="secondary ghost-mini" id="refreshTranslationBtn" type="button">重新生成</button>
+              </div>
+              <div class="help" id="translateStatus">选择外语或粤语后，将自动生成对应播报稿。</div>
               <textarea id="translatedText" rows="7" placeholder="选择外语语种后，可自动翻译当前中文文稿；这里也可以人工微调译文。"></textarea>
             </div>
 
@@ -332,6 +336,6 @@
       </form>
     </dialog>
 
-  <script src="/static/app.js?v=20260822b"></script>
+  <script src="/static/app.js?v=20260826-cantonese1"></script>
     </body>
 </html>

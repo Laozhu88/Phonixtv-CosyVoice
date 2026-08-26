@@ -12,6 +12,7 @@ from .config import config
 
 ALIYUN_LANGUAGE_CODE_MAP = {
     "zh": "zh",
+    "yue": "yue",
     "en": "en",
     "jp": "ja",
     "kr": "ko",
@@ -24,6 +25,7 @@ ALIYUN_LANGUAGE_CODE_MAP = {
 
 BAIDU_LANGUAGE_CODE_MAP = {
     "zh": "zh",
+    "yue": "yue",
     "en": "en",
     "jp": "jp",
     "kr": "kor",
@@ -36,6 +38,7 @@ BAIDU_LANGUAGE_CODE_MAP = {
 
 LANGUAGE_LABEL_MAP = {
     "zh": "中文",
+    "yue": "粤语播报稿",
     "en": "英文",
     "jp": "日语",
     "kr": "韩语",
@@ -48,6 +51,7 @@ LANGUAGE_LABEL_MAP = {
 
 QWEN_LANGUAGE_NAME_MAP = {
     "zh": "Chinese",
+    "yue": "Cantonese",
     "en": "English",
     "jp": "Japanese",
     "kr": "Korean",
@@ -100,9 +104,9 @@ class TranslationService:
         configured = self._is_provider_configured(provider)
         label = PROVIDER_LABELS.get(provider, provider or "未选择")
         if configured:
-            message = f"{label}已配置，可用于外语文稿自动翻译。"
+            message = f"{label}已配置，可用于外语翻译和粤语播报稿转换。"
         else:
-            message = f"未配置{label}所需凭据，暂时不能自动翻译外语文稿。"
+            message = f"未配置{label}所需凭据，暂时不能自动翻译或转换粤语播报稿。"
         return TranslatorStatus(
             provider=provider,
             configured=configured,
