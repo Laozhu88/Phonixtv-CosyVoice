@@ -46,6 +46,7 @@ const state = {
   translation: {},
   translationSignature: "",
   translationEdited: false,
+  machineTranslatedText: "",
   translationTimer: null,
   sourceTextZh: "",
   progressTimer: null,
@@ -171,9 +172,10 @@ function applyLanguageChangeState(nextLanguage) {
   } else if (!state.sourceTextZh) {
     state.sourceTextZh = $("text").value || "";
   }
+  state.translationEdited = false;
+  state.machineTranslatedText = "";
   updateDialectVisibility();
   updateTranslationPanel();
-  state.translationEdited = false;
   scheduleAutoTranslate();
 }
 
@@ -1067,12 +1069,32 @@ function updateTranslationPanel() {
     $("translatedText").value = "";
     state.translationSignature = "";
     state.translationEdited = false;
+    state.machineTranslatedText = "";
+    updateTranslationRestoreButton();
     setTranslationStatus("");
     return;
   }
   const targetLabel = cantoneseMode ? "香港粤语播报稿" : getLanguageLabel($("language").value);
   const providerReady = !!state.translation?.configured;
   setTranslationStatus(providerReady ? `当前目标：${targetLabel}，系统会自动生成，可人工修改。` : "自动转换暂不可用，请在译稿框中人工填写后再配音。");
+  updateTranslationRestoreButton();
+}
+
+function updateTranslationRestoreButton() {
+  const button = $("refreshTranslationBtn");
+  button.textContent = isCantoneseMode() ? "恢复机器翻译稿" : "恢复自动译稿";
+  button.disabled = !state.translationEdited || !state.machineTranslatedText;
+}
+
+function restoreMachineTranslation() {
+  if (!state.translationEdited || !state.machineTranslatedText) return;
+  $("translatedText").value = state.machineTranslatedText;
+  if (!isCantoneseMode()) $("text").value = state.machineTranslatedText;
+  state.translationEdited = false;
+  updateCharCount();
+  updateTranslationRestoreButton();
+  setTranslationStatus("已取消当前人工修改，恢复为机器翻译稿。");
+  setStatus("已恢复机器翻译稿。未重新调用翻译服务。");
 }
 
 function getTranslationSignature() {
@@ -1247,6 +1269,8 @@ async function translateCurrentText(force = false) {
     $("translatedText").value = "";
     state.translationSignature = "";
     state.translationEdited = false;
+    state.machineTranslatedText = "";
+    updateTranslationRestoreButton();
     throw new Error("请先输入中文文稿，再进行自动翻译。");
   }
   const signature = getTranslationSignature();
@@ -1267,9 +1291,11 @@ async function translateCurrentText(force = false) {
       $("text").value = payload.translated_text || "";
     }
     $("translatedText").value = payload.translated_text || "";
+    state.machineTranslatedText = payload.translated_text || "";
     updateCharCount();
     state.translationSignature = signature;
     state.translationEdited = false;
+    updateTranslationRestoreButton();
     setTranslationStatus(`已生成${targetLabel}，请核对人名、地名、数字和专业术语后配音。`);
     setStatus(`已完成${targetLabel}转换。`);
     return payload;
@@ -1312,6 +1338,8 @@ function scheduleAutoTranslate() {
     $("translatedText").value = "";
     state.translationSignature = "";
     state.translationEdited = false;
+    state.machineTranslatedText = "";
+    updateTranslationRestoreButton();
     updateTranslationPanel();
     return;
   }
@@ -1376,13 +1404,11 @@ function renderResult(result) {
   $("resultState").textContent = `已生成 ${result.segments_count || 1} 段`;
   loadResultWave(result.audio_url);
   $("resultSummary").textContent = buildResultSummary(result);
-  $("downloadLink").href = result.audio_url;
-  $("downloadLink").classList.remove("hidden");
   if (result.broadcast_audio_url) {
-    $("downloadBroadcastLink").href = result.broadcast_audio_url;
-    $("downloadBroadcastLink").classList.remove("hidden");
+    $("downloadLink").href = result.broadcast_audio_url;
+    $("downloadLink").classList.remove("hidden");
   } else {
-    $("downloadBroadcastLink").classList.add("hidden");
+    $("downloadLink").classList.add("hidden");
   }
   if (result.zip_url) {
     $("downloadZipLink").href = result.zip_url;
@@ -1789,6 +1815,7 @@ async function buildWorkspacePayload() {
       text_preview: sourceText.slice(0, 120),
       translated_text: translatedText,
       translated_preview: translatedText.slice(0, 120),
+      machine_translated_text: state.machineTranslatedText || translatedText,
       language: $("language").value,
         dialect: $("language").value === "zh" ? $("dialect").value : "",
         mode: currentResult.mode || getCurrentMode(),
@@ -1834,8 +1861,7 @@ async function buildWorkspacePayload() {
       ${getHistorySourcePreview(item) ? `<div class="history-source">${getHistorySourcePreview(item)}</div>` : ""}
       <div class="history-actions">
         <button class="secondary history-apply-btn" data-id="${item.id}" type="button">恢复到当前界面</button>
-        ${item.audio_url ? `<a class="download-link" href="${item.audio_url}" target="_blank">打开结果音频</a>` : ""}
-        ${item.broadcast_audio_url ? `<a class="download-link" href="${item.broadcast_audio_url}" target="_blank">广播母版</a>` : ""}
+        ${item.broadcast_audio_url ? `<a class="download-link" href="${item.broadcast_audio_url}" download>下载播出标准 WAV</a>` : ""}
       </div>
     </div>
   `).join("");
@@ -1862,8 +1888,10 @@ function applyWorkspaceItem(item, sourceLabel = "历史任务") {
   $("instruction").value = item.instruction || "";
   $("styleSelect").value = "natural";
   $("translatedText").value = item.translated_text || "";
+  state.machineTranslatedText = item.machine_translated_text || item.translated_text || "";
   state.translationSignature = getTranslationSignature();
   state.translationEdited = false;
+  updateTranslationRestoreButton();
   if (usesTranslatedScript() && (item.translated_text || "").trim()) {
     setTranslationStatus(`已恢复${isCantoneseMode() ? "粤语播报稿" : `${getLanguageLabel($("language").value)}译文`}，可继续人工修改后配音。`);
   }
@@ -1894,15 +1922,11 @@ function applyWorkspaceItem(item, sourceLabel = "历史任务") {
   updateRateValue();
   updateCharCount();
 
-  if (item.audio_url) {
-    $("downloadLink").href = item.audio_url;
-    $("downloadLink").classList.remove("hidden");
-  }
   if (item.broadcast_audio_url) {
-    $("downloadBroadcastLink").href = item.broadcast_audio_url;
-    $("downloadBroadcastLink").classList.remove("hidden");
+    $("downloadLink").href = item.broadcast_audio_url;
+    $("downloadLink").classList.remove("hidden");
   } else {
-    $("downloadBroadcastLink").classList.add("hidden");
+    $("downloadLink").classList.add("hidden");
   }
   if (item.zip_url) {
     $("downloadZipLink").href = item.zip_url;
@@ -1949,7 +1973,6 @@ function applyWorkspaceItem(item, sourceLabel = "历史任务") {
     $("resultState").textContent = "等待生成结果";
     $("resultSummary").textContent = "尚未生成可下载内容。";
     $("downloadLink").classList.add("hidden");
-    $("downloadBroadcastLink").classList.add("hidden");
     $("downloadZipLink").classList.add("hidden");
     $("qualityCheckBox").classList.add("hidden");
     $("toggleSegmentsBtn").disabled = true;
@@ -2001,6 +2024,8 @@ function bindEvents() {
         $("translatedText").value = $("text").value || "";
       }
       state.translationEdited = false;
+      state.machineTranslatedText = "";
+      updateTranslationRestoreButton();
       state.currentResult = null;
     $("toggleSegmentsBtn").disabled = true;
     $("toggleSegmentsBtn").textContent = "查看分段详情";
@@ -2022,6 +2047,8 @@ function bindEvents() {
         state.sourceTextZh = payload.text || "";
         updateCharCount();
       state.translationEdited = false;
+      state.machineTranslatedText = "";
+      updateTranslationRestoreButton();
         state.currentResult = null;
         $("toggleSegmentsBtn").disabled = true;
         $("toggleSegmentsBtn").textContent = "查看分段详情";
@@ -2043,6 +2070,8 @@ function bindEvents() {
       $("translatedText").value = "";
       updateCharCount();
     state.translationEdited = false;
+    state.machineTranslatedText = "";
+    updateTranslationRestoreButton();
     state.currentResult = null;
     $("toggleSegmentsBtn").disabled = true;
     $("toggleSegmentsBtn").textContent = "查看分段详情";
@@ -2092,6 +2121,7 @@ function bindEvents() {
       state.sourceTextZh = $("text").value || state.sourceTextZh || "";
       updateDialectVisibility();
       state.translationEdited = false;
+      state.machineTranslatedText = "";
       updateTranslationPanel();
       scheduleAutoTranslate();
     });
@@ -2108,15 +2138,10 @@ function bindEvents() {
     updateSegmentSummaryLive();
   });
     $("translatedText").addEventListener("input", () => {
-      state.translationEdited = true;
+      state.translationEdited = $("translatedText").value !== state.machineTranslatedText;
+      updateTranslationRestoreButton();
     });
-    $("refreshTranslationBtn").addEventListener("click", async () => {
-      try {
-        await translateCurrentText(true);
-      } catch (error) {
-        setStatus(`播报稿生成失败：${error.message}`);
-      }
-    });
+    $("refreshTranslationBtn").addEventListener("click", restoreMachineTranslation);
     $("resultWavePlayBtn").addEventListener("click", () => {
       if (!state.resultWave) return;
       state.resultWave.playPause();

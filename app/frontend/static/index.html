@@ -72,7 +72,7 @@
             <div class="translate-box hidden" id="translatePanel">
               <div class="section-head small-head no-border">
                 <h3 id="translatedScriptLabel">自动译稿</h3>
-                <button class="secondary ghost-mini" id="refreshTranslationBtn" type="button">重新生成</button>
+                <button class="secondary ghost-mini" id="refreshTranslationBtn" type="button" disabled>恢复机器翻译稿</button>
               </div>
               <div class="help" id="translateStatus">选择外语或粤语后，将自动生成对应播报稿。</div>
               <textarea id="translatedText" rows="7" placeholder="选择外语语种后，可自动翻译当前中文文稿；这里也可以人工微调译文。"></textarea>
@@ -142,9 +142,8 @@
               </div>
             </div>
             <div class="actions-row result-downloads">
-              <a class="download-link hidden" id="downloadLink" href="" target="_blank">下载生成音频</a>
-              <a class="download-link hidden" id="downloadBroadcastLink" href="" target="_blank">下载广播母版 WAV</a>
-              <a class="download-link hidden" id="downloadZipLink" href="" target="_blank">下载分段压缩包</a>
+              <a class="download-link hidden" id="downloadLink" href="" download>下载播出标准 WAV</a>
+              <a class="download-link hidden" id="downloadZipLink" href="" target="_blank">下载分段素材包（可选）</a>
             </div>
             <div class="quality-check hidden" id="qualityCheckBox"></div>
           </section>
@@ -346,6 +345,6 @@
       </form>
     </dialog>
 
-  <script src="/static/app.js?v=20260826-cantonese2"></script>
+  <script src="/static/app.js?v=20260826-cantonese3"></script>
     </body>
 </html>

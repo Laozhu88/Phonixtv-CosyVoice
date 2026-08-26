@@ -19,10 +19,18 @@ class CantoneseScriptUiTest(unittest.TestCase):
         self.assertIn('formData.append("segment_mode", getSegmentMode())', self.js)
 
     def test_quality_and_broadcast_controls_are_present(self):
-        self.assertIn('id="downloadBroadcastLink"', self.html)
+        self.assertIn('id="downloadLink"', self.html)
+        self.assertIn('下载播出标准 WAV', self.html)
+        self.assertNotIn('id="downloadBroadcastLink"', self.html)
         self.assertIn('id="qualityCheckBox"', self.html)
         self.assertIn('id="llmVariantSelect"', self.html)
         self.assertIn('fetchJson("/api/quality-check"', self.js)
+
+    def test_manual_cantonese_edits_can_restore_machine_translation(self):
+        self.assertIn('恢复机器翻译稿', self.html)
+        self.assertIn('machineTranslatedText', self.js)
+        self.assertIn('restoreMachineTranslation', self.js)
+        self.assertNotIn('translateCurrentText(true);\n      } catch (error) {\n        setStatus(`播报稿生成失败', self.js)
 
 
 if __name__ == "__main__":
