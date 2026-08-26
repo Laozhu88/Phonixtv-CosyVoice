@@ -1,0 +1,22 @@
+{
+  "app_name": "Phoenix Chinese TTS Workstation",
+  "locale": "zh-CN",
+  "theme": "phoenix",
+  "default_output_format": "wav",
+  "default_sample_rate": 22050,
+  "runtime_mode": "local",
+  "tts_provider": "cosyvoice",
+  "translation_provider": "aliyun",
+  "model_profile": "lite",
+  "enable_cpu_fallback": true,
+  "aliyun_access_key_id": "your_access_key_id",
+  "aliyun_access_key_secret": "your_access_key_secret",
+  "aliyun_translate_region": "cn-hangzhou",
+  "aliyun_translate_endpoint": "mt.cn-hangzhou.aliyuncs.com",
+  "baidu_translate_app_id": "backup_app_id",
+  "baidu_translate_secret": "backup_secret",
+  "projects_dir": "./projects",
+  "logs_dir": "./logs",
+  "models_dir": "./models",
+  "tools_dir": "./tools"
+}

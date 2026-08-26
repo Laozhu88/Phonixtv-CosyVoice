@@ -1,0 +1,16 @@
+config/app.local.json
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Runtime data and generated media
+/projects/*
+!/projects/.gitkeep
+/logs/*.log
+
+# Local model/download caches and release staging
+/models/modelscope/
+/release_staging/
+
+# Unrelated local reference asset
+/智驾手环1.jpg

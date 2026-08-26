@@ -1,0 +1,207 @@
+# 凤凰卫视中文台多语种、多方言 AI 智能配音工作台 V1 官方 CosyVoice 云端版安装说明
+
+本文档适用于 `Phonixtv-CosyVoice-Cloud-Official-V1.zip` 云端整合包，推荐用于 AutoDL 等支持 GPU 的算力云平台。
+
+## 一、准备实例
+
+推荐实例配置：
+
+- 系统：Ubuntu 22.04
+- 镜像：PyTorch / Miniconda / CUDA 12.x
+- GPU：RTX 4090 / 4090D / 3090 / A5000，建议显存 16GB 以上
+- 数据盘：建议 50GB 以上
+
+注意：不要用无卡实例做正式配音测试。无卡实例只能验证页面是否能打开，不能判断音质和速度。
+
+## 二、上传整合包
+
+本地整合包位置：
+
+```text
+H:\Codex pj\Phonixtv-CosyVoice\工程项目\release_staging\Phonixtv-CosyVoice-Cloud-Official-V1.zip
+```
+
+通过 AutoDL 的文件上传、AutoPanel、夸克网盘或其他方式，把压缩包上传到：
+
+```text
+/root/autodl-tmp/Phonixtv-CosyVoice-Cloud-Official-V1.zip
+```
+
+## 三、解压整合包
+
+在 AutoDL JupyterLab 终端执行：
+
+```bash
+mkdir -p /root/autodl-tmp/phoenix-cosyvoice-workbench
+unzip /root/autodl-tmp/Phonixtv-CosyVoice-Cloud-Official-V1.zip -d /root/autodl-tmp/phoenix-cosyvoice-workbench
+cd /root/autodl-tmp/phoenix-cosyvoice-workbench/Phonixtv-CosyVoice-Cloud-Official-V1
+chmod +x install_once.sh start_cloud.sh cloud_packaging/*.sh
+```
+
+## 四、首次安装运行环境
+
+在项目目录执行：
+
+```bash
+bash install_once.sh
+```
+
+该脚本会自动完成：
+
+- 创建 Python 3.10 Conda 环境
+- 安装官方 CosyVoice 所需依赖
+- 安装 CUDA 版 PyTorch / torchaudio
+- 安装本地参考音频识别所需组件
+- 下载官方 `Fun-CosyVoice3-0.5B` 模型到数据盘
+
+官方模型默认保存到：
+
+```text
+/root/autodl-tmp/official/CosyVoice-official/pretrained_models/Fun-CosyVoice3-0.5B
+```
+
+首次安装可能需要较长时间，主要取决于模型和依赖下载速度。
+
+## 五、启动工作台
+
+安装完成后执行：
+
+```bash
+bash start_cloud.sh
+```
+
+正常启动时，终端应显示类似信息：
+
+```text
+Torch: 2.3.1+cu121 CUDA: True
+Backend: official
+Uvicorn running on http://0.0.0.0:6006
+```
+
+启动后不要关闭该终端。
+
+## 六、打开工作台
+
+回到 AutoDL 控制台，打开当前实例的：
+
+```text
+自定义服务
+```
+
+如果需要填写端口，填写：
+
+```text
+6006
+```
+
+进入页面后，可先测试：
+
+1. 输入一小段中文文稿。
+2. 上传 8-15 秒参考音频。
+3. 等待自动识别参考音频文字。
+4. 点击“一键生成配音”。
+
+## 七、后续再次启动
+
+如果实例没有被释放，只是停止了工作台服务，后续只需执行：
+
+```bash
+cd /root/autodl-tmp/phoenix-cosyvoice-workbench/Phonixtv-CosyVoice-Cloud-Official-V1
+bash start_cloud.sh
+```
+
+不需要再次执行 `install_once.sh`。
+
+## 八、保存 AutoDL 自定义镜像
+
+首次安装并测试成功后，建议在 AutoDL 控制台保存为自定义镜像。
+
+保存前可清理缓存：
+
+```bash
+pkill -9 -f "uvicorn" || true
+rm -rf /root/.cache/pip
+rm -rf /tmp/pip-*
+rm -rf /root/autodl-tmp/pip_cache
+```
+
+不要删除：
+
+```text
+/root/autodl-tmp/phoenix-cosyvoice-workbench
+/root/autodl-tmp/official
+/root/autodl-tmp/conda_envs
+```
+
+镜像名称建议：
+
+```text
+凤凰卫视中文台多语种多方言配音工作台-V1-Official-CosyVoice
+```
+
+保存镜像后，以后新开实例时直接选择该镜像，只需执行：
+
+```bash
+cd /root/autodl-tmp/phoenix-cosyvoice-workbench/Phonixtv-CosyVoice-Cloud-Official-V1
+bash start_cloud.sh
+```
+
+## 九、常见问题
+
+### 1. 页面打不开
+
+确认服务是否启动：
+
+```bash
+ps -ef | grep uvicorn
+```
+
+确认启动端口是 `6006`，并从 AutoDL 控制台的“自定义服务”进入，不要直接访问 `0.0.0.0:6006`。
+
+### 2. 提示 CUDA: False
+
+说明当前实例没有可用 GPU，或者没有正确租用 GPU 实例。请更换有 GPU 的实例。
+
+### 3. 参考音频无法识别文字
+
+确认本地模型存在：
+
+```bash
+ls -lh /root/autodl-tmp/phoenix-cosyvoice-workbench/Phonixtv-CosyVoice-Cloud-Official-V1/models/SenseVoiceSmall
+```
+
+如目录不存在，说明整合包不完整或解压失败。
+
+### 4. 生成失败或端口被占用
+
+先停止旧服务：
+
+```bash
+pkill -9 -f "uvicorn" || true
+pkill -9 -f "app.backend.main" || true
+```
+
+再启动：
+
+```bash
+bash start_cloud.sh
+```
+
+### 5. 空间不足
+
+查看空间：
+
+```bash
+df -h
+du -h --max-depth=1 /root/autodl-tmp | sort -h
+```
+
+优先清理：
+
+```bash
+rm -rf /root/.cache/pip
+rm -rf /tmp/pip-*
+rm -rf /root/autodl-tmp/pip_cache
+```
+
+不要把大模型和工作台放在 `/root` 系统盘，建议统一放在 `/root/autodl-tmp` 数据盘。

@@ -1,0 +1,337 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>凤凰卫视中文台多语种、多方言智能配音工作台</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260820d" />
+    <script src="/static/vendor/wavesurfer/wavesurfer.min.js?v=7.12.11"></script>
+    <script src="/static/vendor/wavesurfer/regions.min.js?v=7.12.11"></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand-wrap">
+          <img class="brand-logo" src="/static/phoenix-logo.png" alt="PhoenixTV Logo" />
+          <div class="brand-text">
+            <h1>凤凰卫视中文台多语种、多方言智能配音工作台</h1>
+            <p>Phoenix TV Chinese Channel's multilingual and multi-dialect AI Intelligent Dubbing Workbench</p>
+          </div>
+        </div>
+        <div class="version-badge" id="bundleChip">适配层检测中</div>
+      </header>
+
+      <main class="main-grid">
+        <section class="left-stack">
+          <section class="panel">
+            <div class="section-head compact-head">
+              <h2>配音文稿与生成</h2>
+              <span id="charCount">当前字数：0</span>
+            </div>
+
+            <label class="field">
+              <span>配音文稿</span>
+              <textarea id="text" placeholder="请输入要配音的文稿。短篇、长篇都可输入，建议先用自然段整理好结构。"></textarea>
+            </label>
+
+            <div class="script-tools-row">
+              <div class="text-file-wrap">
+                <input id="textFile" type="file" accept=".txt,.docx" />
+                <div class="help">支持导入 txt、docx 文本文件。</div>
+              </div>
+              <div class="clear-text-wrap">
+                <button class="secondary" id="clearTextBtn" type="button">清除文稿</button>
+              </div>
+            </div>
+
+              <div class="segment-switch-row">
+                <label class="check-label">
+                  <input id="autoSegment" type="checkbox" checked />
+                  启用自然段分段配音
+                </label>
+                <div class="help segment-inline-help">开启后，文稿每个回车自然段，会作为一个可单独编辑的配音段，可在中文稿框中，通过回车键，减少或增加分段。</div>
+              </div>
+
+              <div class="language-row">
+                <label class="field">
+                  <span>语种</span>
+                  <select id="language"></select>
+              </label>
+              <label class="field" id="dialectField">
+                <span>中文方言</span>
+                <select id="dialect"></select>
+              </label>
+            </div>
+            <div class="help" id="dialectHint">推荐先用一两句短文本试听，再决定是否用于整篇配音。</div>
+
+            <div class="translation-settings-row">
+              <div class="help">选择外语语种后会自动翻译文稿。可在翻译设置中切换翻译平台或大模型。</div>
+              <button class="secondary ghost-mini" id="translationSettingsBtn" type="button">翻译设置</button>
+            </div>
+
+            <div class="translate-box hidden" id="translatePanel">
+              <div class="help" id="translateStatus">选择外语语种后，将自动生成对应译文。</div>
+              <textarea id="translatedText" rows="7" placeholder="选择外语语种后，可自动翻译当前中文文稿；这里也可以人工微调译文。"></textarea>
+            </div>
+
+            <div class="speed-block">
+              <div class="section-head small-head">
+                <h3>配音语速</h3>
+                <span id="speechRateValue">1.00x</span>
+              </div>
+              <div class="speed-presets" id="speechRatePresets">
+                <button class="speed-preset-btn" type="button" data-rate="0.50">0.50x</button>
+                <button class="speed-preset-btn" type="button" data-rate="0.80">0.80x</button>
+                <button class="speed-preset-btn active" type="button" data-rate="1.00">1.00x</button>
+                <button class="speed-preset-btn" type="button" data-rate="1.20">1.20x</button>
+                <button class="speed-preset-btn" type="button" data-rate="1.50">1.50x</button>
+                <button class="speed-preset-btn" type="button" data-rate="1.80">1.80x</button>
+                <button class="speed-preset-btn" type="button" data-rate="2.00">2.00x</button>
+              </div>
+              <input id="speechRate" type="range" min="0.50" max="2.00" step="0.05" value="1.00" />
+            </div>
+
+            <div class="actions-row">
+              <button class="primary strong" id="generateBtn" type="button">一键生成配音</button>
+            </div>
+
+            <div class="status-box" id="statusBox">等待任务。</div>
+
+            <div class="progress-box">
+              <div class="progress-label">生成进度</div>
+              <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+              <div class="progress-text" id="progressText">尚未开始生成。</div>
+            </div>
+
+            <div class="segment-box">
+              <div class="section-head small-head no-border">
+                <h3>分段结果</h3>
+                <button class="secondary ghost-mini" id="toggleSegmentsBtn" type="button" disabled>查看分段详情</button>
+              </div>
+              <div class="help" id="segmentSummary">当前按回车自然分为 1 个主段。生成后可查看分段详情。</div>
+              <div class="segment-list hidden" id="segmentList"></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head compact-head">
+              <h2>生成结果</h2>
+              <span id="resultState">等待生成结果</span>
+            </div>
+            <div class="result-wave">
+              <div id="resultWaveform"></div>
+              <div class="result-wave-tools below">
+                <button class="secondary ghost-mini" id="resultWavePlayBtn" type="button" disabled>播放结果</button>
+                <span class="result-wave-note">可拖动定位</span>
+              </div>
+            </div>
+            <div class="result-summary-box">
+              <div class="section-head small-head no-border">
+                <h3>生成结果与任务摘要</h3>
+                <button class="secondary ghost-mini" id="toggleResultSummaryBtn" type="button">查看生成结果</button>
+              </div>
+              <div class="result-summary-panel hidden" id="resultSummaryPanel">
+                <div class="result-summary" id="resultSummary">尚未生成可下载内容。</div>
+                <div class="actions-row result-actions">
+                  <button class="secondary" id="saveHistoryBtn" type="button">保存结果</button>
+                </div>
+              </div>
+            </div>
+            <div class="actions-row result-downloads">
+              <a class="download-link hidden" id="downloadLink" href="" target="_blank">下载生成音频</a>
+              <a class="download-link hidden" id="downloadZipLink" href="" target="_blank">下载分段压缩包</a>
+            </div>
+          </section>
+
+        </section>
+
+        <section class="right-stack">
+          <section class="panel">
+            <div class="section-head compact-head">
+              <h2>音色与参考音频</h2>
+            </div>
+
+            <label class="field">
+              <span>音色库</span>
+              <select id="voiceSelect"></select>
+            </label>
+
+            <div class="voice-actions">
+              <button class="secondary" id="pinVoiceBtn" type="button">置顶当前音色</button>
+              <button class="danger" id="deleteVoiceBtn" type="button">删除所选音色</button>
+            </div>
+
+            <label class="field">
+              <span>参考音频</span>
+              <input id="promptAudio" type="file" accept=".wav,.mp3,.m4a" />
+              <small class="help">推荐8~15秒；可点击“剪辑”后直接在波形上拖动选区两端。</small>
+            </label>
+          </section>
+
+          <section class="panel prompt-wave-panel">
+            <div class="section-head compact-head prompt-wave-head">
+              <h2>参考音频波形</h2>
+              <span>右下角：撤销 / 剪辑</span>
+            </div>
+            <div class="mini-wave" id="promptWave"></div>
+            <div class="prompt-clip-panel">
+              <div class="help" id="promptClipTip">当前未剪辑，将默认提交完整参考音频；若超过15秒，提交时会自动截取前15秒。</div>
+              <div class="prompt-clip-times">
+                <span>起点时间：<strong id="promptClipStartLabel">0.00 秒</strong></span>
+                <span>出点时间：<strong id="promptClipEndLabel">0.00 秒</strong></span>
+                <span>保留时长：<strong id="promptClipKeepLabel">0.00 秒</strong></span>
+                <span>原始时长：<strong id="promptClipDurationLabel">0.00 秒</strong></span>
+              </div>
+            </div>
+            <div class="result-wave-tools below prompt-wave-actions">
+              <button class="secondary ghost-mini" id="promptWavePlayBtn" type="button">播放参考音频</button>
+              <button class="secondary ghost-mini" id="promptClipApplyBtn" type="button">剪辑</button>
+              <button class="secondary ghost-mini" id="promptClipResetBtn" type="button" disabled>撤销</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head compact-head">
+              <h2>提示文本与高级控制</h2>
+            </div>
+            <label class="field">
+              <span>参考音频识别文字 / 提示文本</span>
+              <textarea id="promptText" rows="6" placeholder="参考音色播报模式建议填写与参考音频一致的提示文本；跨语种/多方言模式可留空。"></textarea>
+            </label>
+            <button class="secondary" id="refreshPromptTextBtn" type="button">重新识别参考音频</button>
+
+              <select id="styleSelect" hidden aria-hidden="true">
+                <option value="natural">自然</option>
+              </select>
+
+              <div class="field instruction-field">
+                <div class="instruction-label-row">
+                  <span id="instructionLabel">高级控制指令（实验性）</span>
+                  <details class="instruction-help-disclosure">
+                    <summary aria-label="查看高级控制指令使用说明" title="使用说明">?</summary>
+                    <div class="instruction-help-card">
+                      <strong>高级控制指令使用说明</strong>
+                      <p><strong>1. 填写方式</strong><br />语种和方言请使用上方选项；这里仅填写一条简短、明确的语气或节奏要求。不要同时堆叠多种互相冲突的要求。</p>
+                      <p><strong>2. 较容易生效的写法</strong><br />请轻声朗读、请放慢语速、请开心地表达、请伤心地表达、请生气地表达。</p>
+                      <p><strong>3. 增强情绪或节奏</strong><br />加入“非常”通常可增强模型的表达倾向：<br />请伤心地表达 → 请<strong>非常</strong>伤心地表达<br />请开心地表达 → 请<strong>非常</strong>开心地表达<br />请生气地表达 → 请<strong>非常</strong>生气地表达<br />请缓慢地朗读 → 请<strong>非常</strong>缓慢地朗读</p>
+                      <p><strong>4. 效果边界</strong><br />“非常”不是精确的强度数值。新闻口吻、沉稳、亲切、停连等开放描述可能只有轻微差异，实际效果也会受参考音频和音色影响。建议先用一两句短文本试听。</p>
+                    </div>
+                  </details>
+                </div>
+                <input id="instruction" type="text" aria-labelledby="instructionLabel" placeholder="例如：请非常伤心地表达" />
+              </div>
+          </section>
+
+          <section class="panel">
+            <label class="field">
+              <span>保存当前参考音色</span>
+              <div class="inline-save-row">
+              <input id="voiceNameInput" type="text" placeholder="例如：凤凰男声-01" />
+                <button class="secondary" id="saveVoiceBtn" type="button">保存参考音色</button>
+              </div>
+            </label>
+            <div class="help">会把当前参考音频和识别文字一起保存到音色库，可重复调用。</div>
+          </section>
+
+          <section class="panel" id="channelTemplatePanel">
+            <label class="field">
+              <span>栏目模板 / 频道模板</span>
+              <select id="channelTemplateSelect">
+                <option value="">请选择已保存模板</option>
+              </select>
+            </label>
+            <div class="inline-save-row">
+              <input id="channelTemplateNameInput" type="text" placeholder="例如：我们和它们AI女声模板" />
+              <button class="secondary" id="saveChannelTemplateBtn" type="button">保存当前配音参数为模板</button>
+            </div>
+            <div class="actions-row compact-actions">
+              <button class="secondary ghost-mini" id="deleteChannelTemplateBtn" type="button">删除所选模板</button>
+            </div>
+            <div class="help">模板会保存当前音色、语种、方言、语速和高级控制指令。若当前使用临时参考音频，请先保存为音色后再保存模板。</div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head compact-head">
+              <h2>历史任务记录</h2>
+              <div class="history-toolbar">
+                <button class="secondary ghost-mini" id="refreshHistoryBtn" type="button">刷新历史记录</button>
+                <button class="secondary ghost-mini" id="toggleHistoryBtn" type="button">展开历史记录</button>
+              </div>
+            </div>
+            <div class="help">仅保留最新 10 条生成任务，较早记录会自动移除。</div>
+            <div class="history-list hidden" id="historyList"></div>
+          </section>
+
+        </section>
+      </main>
+      <footer class="panel footer-panel page-footer">
+        <img class="footer-logo" src="/static/phoenix-logo-footer.png" alt="PhoenixTV Footer Logo" />
+        <div class="footer-note">工作台版权归属凤凰卫视，未经授权不得擅自使用。工作台由策划组提供技术支持。</div>
+      </footer>
+    </div>
+
+    <dialog class="translation-settings-dialog" id="translationSettingsDialog">
+      <form class="translation-settings-form" method="dialog">
+        <div class="section-head compact-head">
+          <div>
+            <h2>翻译引擎设置</h2>
+            <div class="help">仅用于外语文稿自动翻译。密钥只保存于当前工作台，不会显示或回传到页面。</div>
+          </div>
+          <button class="secondary ghost-mini" id="translationSettingsCloseBtn" type="button">关闭</button>
+        </div>
+
+        <label class="field">
+          <span>翻译平台 / 模型</span>
+          <select id="translationProvider">
+            <option value="aliyun">阿里云机器翻译</option>
+            <option value="qwen_mt">千问翻译（Qwen-MT）</option>
+            <option value="baidu">百度翻译</option>
+            <option value="baidu_qianfan">百度千帆大模型翻译</option>
+          </select>
+        </label>
+        <div class="help translation-provider-help" id="translationProviderHelp"></div>
+
+        <section class="translation-provider-fields" data-provider="aliyun">
+          <div class="translation-credential-grid">
+            <label class="field"><span>AccessKey ID（账号标识）</span><input id="aliyunAccessKeyId" type="password" autocomplete="off" placeholder="已配置可留空" /></label>
+            <label class="field"><span>AccessKey Secret（安全密钥）</span><input id="aliyunAccessKeySecret" type="password" autocomplete="off" placeholder="已配置可留空" /></label>
+          </div>
+          <div class="translation-provider-note">获取方式：登录阿里云控制台，进入“AccessKey 管理”创建 AccessKey；并在机器翻译控制台开通服务、授予调用权限。</div>
+        </section>
+
+        <section class="translation-provider-fields hidden" data-provider="qwen_mt">
+          <div class="translation-credential-grid">
+            <label class="field"><span>DashScope API Key</span><input id="qwenApiKey" type="password" autocomplete="off" placeholder="已配置可留空" /></label>
+            <label class="field"><span>翻译模型</span><input id="qwenMtModel" type="text" value="qwen-mt-plus" /></label>
+          </div>
+          <div class="translation-provider-note">获取方式：登录阿里云百炼 / DashScope 控制台，在“API Key 管理”中创建密钥。默认模型为 qwen-mt-plus。</div>
+        </section>
+
+        <section class="translation-provider-fields hidden" data-provider="baidu">
+          <div class="translation-credential-grid">
+            <label class="field"><span>APP ID（应用标识）</span><input id="baiduAppId" type="password" autocomplete="off" placeholder="已配置可留空" /></label>
+            <label class="field"><span>密钥（安全密钥）</span><input id="baiduSecret" type="password" autocomplete="off" placeholder="已配置可留空" /></label>
+          </div>
+          <div class="translation-provider-note">获取方式：登录百度翻译开放平台，在开发者信息或应用管理页创建应用并取得 APP ID 与密钥。</div>
+        </section>
+
+        <section class="translation-provider-fields hidden" data-provider="baidu_qianfan">
+          <div class="translation-credential-grid">
+            <label class="field"><span>千帆 API Key</span><input id="baiduQianfanApiKey" type="password" autocomplete="off" placeholder="已配置可留空" /></label>
+            <label class="field"><span>大模型名称</span><input id="baiduQianfanModel" type="text" value="ernie-4.5-turbo-20260402" /></label>
+          </div>
+          <div class="translation-provider-note">获取方式：登录百度智能云千帆控制台，在“API Key 管理”中创建密钥。模型可按账号实际可用模型调整。</div>
+        </section>
+
+        <div class="translation-settings-actions">
+          <button class="secondary danger" id="translationSettingsClearBtn" type="button">清除当前平台凭据</button>
+          <button class="secondary" id="translationSettingsTestBtn" type="button">测试连接</button>
+          <button class="primary strong" id="translationSettingsSaveBtn" type="button">保存翻译设置</button>
+        </div>
+        <div class="help translation-settings-status" id="translationSettingsStatus"></div>
+      </form>
+    </dialog>
+
+  <script src="/static/app.js?v=20260822b"></script>
+    </body>
+</html>

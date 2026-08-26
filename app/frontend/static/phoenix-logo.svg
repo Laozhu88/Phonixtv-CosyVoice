@@ -1,0 +1,13 @@
+﻿<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="phoenixGlow" x1="34" y1="32" x2="196" y2="208" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD57D"/>
+      <stop offset="0.55" stop-color="#FF874A"/>
+      <stop offset="1" stop-color="#C61E1E"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="220" height="220" rx="54" fill="rgba(255,255,255,0.04)" stroke="rgba(255,213,125,0.28)"/>
+  <path d="M123 47C145 65 160 86 168 111C156 102 145 97 134 96C150 116 155 136 149 156C138 191 102 202 72 191C89 188 102 179 111 165C91 169 71 162 58 147C45 131 40 108 48 87C56 98 67 105 80 108C77 87 83 70 96 57C104 49 113 45 123 47Z" fill="url(#phoenixGlow)"/>
+  <path d="M147 67C161 71 173 79 183 91C167 91 154 95 144 103C143 90 144 78 147 67Z" fill="url(#phoenixGlow)" opacity="0.88"/>
+  <path d="M136 116C122 141 103 156 80 161C93 145 100 128 102 109C112 114 123 116 136 116Z" fill="#FFE6BC" opacity="0.9"/>
+</svg>
