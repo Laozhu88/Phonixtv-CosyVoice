@@ -678,7 +678,6 @@ function renderFromStatus(status) {
     state.dialectGuidance = status.capabilities.dialect_guidance || {};
     state.translation = status.translation || {};
     $("bundleChip").textContent = status.bundle.available ? "Rainfall 已连接" : "Rainfall 未连接";
-    $("llmVariantSelect").value = status.runtime?.configured_llm_variant || "rl";
     renderSelect($("language"), status.capabilities.languages, "zh");
     renderDialectSelect(status.capabilities.dialects, "mandarin");
     renderChannelTemplateSelect("");
@@ -1452,20 +1451,6 @@ async function qualityCheckCurrentResult(expectedText) {
   }
 }
 
-async function changeLlmVariant() {
-  const selected = $("llmVariantSelect").value || "rl";
-  const payload = await fetchJson("/api/model-variant", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ variant: selected }),
-  });
-  if (state.status?.runtime) {
-    state.status.runtime.configured_llm_variant = payload.variant;
-    state.status.runtime.engine_initialized = false;
-  }
-  setStatus(`${payload.message} 当前选择：${selected === "rl" ? "RL 强化版" : "基础版"}。`);
-}
-
 function toggleSegmentEditor(index) {
   if (!state.currentResult?.segments?.length) return;
   state.currentResult.segments = state.currentResult.segments.map((seg) => Number(seg.index) === Number(index) ? { ...seg, editor_open: !seg.editor_open } : seg);
@@ -2169,13 +2154,6 @@ function bindEvents() {
       setStatus(`生成失败：${error.message}`);
     }
   });
-    $("llmVariantSelect").addEventListener("change", async () => {
-      try {
-        await changeLlmVariant();
-      } catch (error) {
-        setStatus(`模型权重切换失败：${error.message}`);
-      }
-    });
     $("toggleSegmentsBtn").addEventListener("click", toggleSegments);
     $("toggleResultSummaryBtn").addEventListener("click", () => toggleResultSummary());
     $("toggleHistoryBtn").addEventListener("click", () => toggleHistory());

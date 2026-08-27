@@ -23,7 +23,8 @@ class CantoneseScriptUiTest(unittest.TestCase):
         self.assertIn('下载播出标准 WAV', self.html)
         self.assertNotIn('id="downloadBroadcastLink"', self.html)
         self.assertIn('id="qualityCheckBox"', self.html)
-        self.assertIn('id="llmVariantSelect"', self.html)
+        self.assertNotIn('id="llmVariantSelect"', self.html)
+        self.assertNotIn('changeLlmVariant', self.js)
         self.assertIn('fetchJson("/api/quality-check"', self.js)
 
     def test_manual_cantonese_edits_can_restore_machine_translation(self):
