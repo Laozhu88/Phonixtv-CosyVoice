@@ -18,7 +18,7 @@ from .translator import translator
 
 app = FastAPI(
     title="Phoenix TV Chinese TTS Workstation",
-    version="0.5.0",
+    version="1.0.0",
     summary="Phoenix-branded workstation for CosyVoice multilingual and Chinese dialect dubbing.",
 )
 
